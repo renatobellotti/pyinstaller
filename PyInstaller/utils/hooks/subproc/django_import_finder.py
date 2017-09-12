@@ -33,17 +33,15 @@ from PyInstaller.utils.hooks import collect_submodules
 
 version = django.get_version().split('.')
 
+def _remove_class(class_name):
+    return '.'.join(class_name.split('.')[0:-1])
+
 # for django < 1.10:
-if int(version[0]) == 1 and int(version[1]) <= 10:
+if int(version[0]) == 1 and int(version[1]) < 10:
     hiddenimports = list(settings.INSTALLED_APPS) + \
                      list(settings.TEMPLATE_CONTEXT_PROCESSORS) + \
                      list(settings.TEMPLATE_LOADERS) + \
                      [settings.ROOT_URLCONF]
-
-
-    def _remove_class(class_name):
-        return '.'.join(class_name.split('.')[0:-1])
-
 
     ### Changes in Django 1.7.
 
@@ -120,10 +118,44 @@ if int(version[0]) == 1 and int(version[1]) <= 10:
     # This print statement is then parsed and evaluated as Python code.
     print(hiddenimports)
 
-# for django 1.x, where x > 10
-elif int(version[0]) == 1 and int(version[1]) > 10:
-    pass
-
+# for django 1.x, where x >= 10
+elif int(version[0]) == 1 and int(version[1]) >= 10:
+    hiddenimports = settings.INSTALLED_APPS + [settings.ROOT_URLCONF]
+    for template in settings.TEMPLATES:
+        # add loaders only if explicitly set (default: not in the settings.py file)
+        # django uses the default settings if the 'loaders' template setting is not
+        # explicitly given
+        if 'loaders' in template:
+            hiddenimports += template['loaders']
+    
+    # Remove class names and keep just modules.
+    if hasattr(settings, 'AUTHENTICATION_BACKENDS'):
+        for cl in settings.AUTHENTICATION_BACKENDS:
+            cl = _remove_class(cl)
+            hiddenimports.append(cl)
+    if hasattr(settings, 'DEFAULT_FILE_STORAGE'):
+        cl = _remove_class(settings.DEFAULT_FILE_STORAGE)
+        hiddenimports.append(cl)
+    if hasattr(settings, 'FILE_UPLOAD_HANDLERS'):
+        for cl in settings.FILE_UPLOAD_HANDLERS:
+            cl = _remove_class(cl)
+            hiddenimports.append(cl)
+    # this is possibly broken, because in the new MIDDLEWARE settings,
+    # also functions can be in the list of MIDDLEWARE
+    if hasattr(settings, 'MIDDLEWARE'):
+        for cl in settings.MIDDLEWARE:
+            cl = _remove_class(cl)
+            hiddenimports.append(cl)
+    # Templates is list of dicts:
+    for templ in settings.TEMPLATE:
+        backend = _remove_class(templ['BACKEND'])
+        # Include context_processors.
+        if hasattr(templ, 'OPTIONS'):
+            if hasattr(templ['OPTIONS'], 'context_processors'):
+                # Context processors are functions - strip last word.
+                mods = templ['OPTIONS']['context_processors']
+                mods = [_remove_class(x) for x in mods]
+                hiddenimports += mods
 else:
     # unsupported major version
     assert(False)
