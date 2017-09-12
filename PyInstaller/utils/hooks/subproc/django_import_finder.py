@@ -75,20 +75,6 @@ if int(version[0]) == 1 and int(version[1]) < 10:
         for cl in settings.MIDDLEWARE_CLASSES:
             cl = _remove_class(cl)
             hiddenimports.append(cl)
-    # Templates is a dict:
-    if hasattr(settings, 'TEMPLATES'):
-        for templ in settings.TEMPLATES:
-            backend = _remove_class(templ['BACKEND'])
-            # Include context_processors.
-            if hasattr(templ, 'OPTIONS'):
-                if hasattr(templ['OPTIONS'], 'context_processors'):
-                    # Context processors are functions - strip last word.
-                    mods = templ['OPTIONS']['context_processors']
-                    mods = [_remove_class(x) for x in mods]
-                    hiddenimports += mods
-    # Include database backends - it is a dict.
-    for v in settings.DATABASES.values():
-        hiddenimports.append(v['ENGINE'])
 
     # Add templatetags and context processors for each installed app.
     for app in settings.INSTALLED_APPS:
@@ -143,6 +129,20 @@ else:
     # unsupported major version
     assert(False)
 
+# Templates is a dict:
+if hasattr(settings, 'TEMPLATES'):
+    for templ in settings.TEMPLATES:
+        backend = _remove_class(templ['BACKEND'])
+        # Include context_processors.
+        if hasattr(templ, 'OPTIONS'):
+            if hasattr(templ['OPTIONS'], 'context_processors'):
+                # Context processors are functions - strip last word.
+                mods = templ['OPTIONS']['context_processors']
+                mods = [_remove_class(x) for x in mods]
+                hiddenimports += mods
+# Include database backends - it is a dict.
+for v in settings.DATABASES.values():
+    hiddenimports.append(v['ENGINE'])
 
 # Deduplicate imports.
 hiddenimports = list(set(hiddenimports))
