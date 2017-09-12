@@ -84,18 +84,6 @@ if int(version[0]) == 1 and int(version[1]) < 10:
         hiddenimports += collect_submodules(app_templatetag_module)
         hiddenimports.append(app_ctx_proc_module)
 
-
-    from django.core.urlresolvers import RegexURLPattern, RegexURLResolver
-
-
-    # Construct base module name - without 'settings' suffix.
-    base_module_name = '.'.join(os.environ['DJANGO_SETTINGS_MODULE'].split('.')[0:-1])
-    base_module = __import__(base_module_name, {}, {}, ["urls"])
-    urls = base_module.urls
-
-    # Find url imports.
-    hiddenimports += find_url_callbacks(urls)
-
 # for django 1.x, where x >= 10
 elif int(version[0]) == 1 and int(version[1]) >= 10:
     hiddenimports = settings.INSTALLED_APPS + [settings.ROOT_URLCONF]
@@ -125,6 +113,19 @@ elif int(version[0]) == 1 and int(version[1]) >= 10:
             cl = _remove_class(cl)
             hiddenimports.append(cl)
     
+    
+    import importlib
+    # Add templatetags and context processors for each installed app.
+    for app in settings.INSTALLED_APPS:
+        mod = importlib.import_module(app)
+        if hasattr(mod, 'templatetags'):
+            app_templatetag_module = app + '.templatetags'
+            hiddenimports.append(app_templatetag_module)
+        if hasattr(mod, 'context_processors'):
+            app_ctx_proc_module = app + '.context_processors'
+            hiddenimports += collect_submodules(app_templatetag_module)
+            hiddenimports.append(app_ctx_proc_module)
+    
 else:
     # unsupported major version
     assert(False)
@@ -143,6 +144,16 @@ if hasattr(settings, 'TEMPLATES'):
 # Include database backends - it is a dict.
 for v in settings.DATABASES.values():
     hiddenimports.append(v['ENGINE'])
+
+from django.core.urlresolvers import RegexURLPattern, RegexURLResolver
+
+# Construct base module name - without 'settings' suffix.
+base_module_name = '.'.join(os.environ['DJANGO_SETTINGS_MODULE'].split('.')[0:-1])
+base_module = __import__(base_module_name, {}, {}, ["urls"])
+urls = base_module.urls
+
+# Find url imports.
+hiddenimports += find_url_callbacks(urls)
 
 # Deduplicate imports.
 hiddenimports = list(set(hiddenimports))
