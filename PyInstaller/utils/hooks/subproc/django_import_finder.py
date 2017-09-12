@@ -36,6 +36,20 @@ version = django.get_version().split('.')
 def _remove_class(class_name):
     return '.'.join(class_name.split('.')[0:-1])
 
+def find_url_callbacks(urls_module):
+        if isinstance(urls_module, list):
+            urlpatterns = urls_module
+            hid_list = []
+        else:
+            urlpatterns = urls_module.urlpatterns
+            hid_list = [urls_module.__name__]
+        for pattern in urlpatterns:
+            if isinstance(pattern, RegexURLPattern):
+                hid_list.append(pattern.callback.__module__)
+            elif isinstance(pattern, RegexURLResolver):
+                hid_list += find_url_callbacks(pattern.urlconf_module)
+        return hid_list
+
 # for django < 1.10:
 if int(version[0]) == 1 and int(version[1]) < 10:
     hiddenimports = list(settings.INSTALLED_APPS) + \
@@ -76,22 +90,6 @@ if int(version[0]) == 1 and int(version[1]) < 10:
     for v in settings.DATABASES.values():
         hiddenimports.append(v['ENGINE'])
 
-
-    def find_url_callbacks(urls_module):
-        if isinstance(urls_module, list):
-            urlpatterns = urls_module
-            hid_list = []
-        else:
-            urlpatterns = urls_module.urlpatterns
-            hid_list = [urls_module.__name__]
-        for pattern in urlpatterns:
-            if isinstance(pattern, RegexURLPattern):
-                hid_list.append(pattern.callback.__module__)
-            elif isinstance(pattern, RegexURLResolver):
-                hid_list += find_url_callbacks(pattern.urlconf_module)
-        return hid_list
-
-
     # Add templatetags and context processors for each installed app.
     for app in settings.INSTALLED_APPS:
         app_templatetag_module = app + '.templatetags'
@@ -111,12 +109,6 @@ if int(version[0]) == 1 and int(version[1]) < 10:
 
     # Find url imports.
     hiddenimports += find_url_callbacks(urls)
-
-    # Deduplicate imports.
-    hiddenimports = list(set(hiddenimports))
-
-    # This print statement is then parsed and evaluated as Python code.
-    print(hiddenimports)
 
 # for django 1.x, where x >= 10
 elif int(version[0]) == 1 and int(version[1]) >= 10:
@@ -146,16 +138,14 @@ elif int(version[0]) == 1 and int(version[1]) >= 10:
         for cl in settings.MIDDLEWARE:
             cl = _remove_class(cl)
             hiddenimports.append(cl)
-    # Templates is list of dicts:
-    for templ in settings.TEMPLATE:
-        backend = _remove_class(templ['BACKEND'])
-        # Include context_processors.
-        if hasattr(templ, 'OPTIONS'):
-            if hasattr(templ['OPTIONS'], 'context_processors'):
-                # Context processors are functions - strip last word.
-                mods = templ['OPTIONS']['context_processors']
-                mods = [_remove_class(x) for x in mods]
-                hiddenimports += mods
+    
 else:
     # unsupported major version
     assert(False)
+
+
+# Deduplicate imports.
+hiddenimports = list(set(hiddenimports))
+
+# This print statement is then parsed and evaluated as Python code.
+print(hiddenimports)
